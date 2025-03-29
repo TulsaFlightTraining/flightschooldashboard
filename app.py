@@ -84,3 +84,34 @@ maintenance_data = pd.DataFrame({
     "Next Due": ["2024-04-15", "2024-05-10", "2024-06-01"]
 })
 st.dataframe(maintenance_data)
+
+# Existing dashboard code...
+
+# ------------------------------
+# 📤 PDF Upload and Extraction Section
+# ------------------------------
+import fitz  # PyMuPDF
+import pandas as pd
+import streamlit as st
+
+st.header("📤 Upload Flight School PDF Data")
+
+uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+
+if uploaded_file is not None:
+    # Read PDF with PyMuPDF
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+        text = ""
+        for page in doc:
+            text += page.get_text()
+
+    st.subheader("📄 Extracted Text")
+    st.text_area("PDF Content", text, height=300)
+
+    # Example: Try to structure into rows (custom logic here)
+    rows = [line for line in text.split("\n") if line.strip()]
+    df = pd.DataFrame(rows, columns=["Raw Data"])
+    
+    st.subheader("🧾 Raw Data Preview")
+    st.dataframe(df)
+
