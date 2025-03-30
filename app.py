@@ -2,55 +2,64 @@
 import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
-import matplotlib.pyplot as plt
-import seaborn as sns
-from io import StringIO
 import re
-from datetime import datetime
+import io
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Flight School Dashboard", layout="wide")
+st.set_page_config(layout="wide", page_title="Flight School Dashboard")
 
 st.title("📊 Flight School Dashboard")
-st.sidebar.header("Upload PDF Flight Log")
 
-uploaded_file = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
+uploaded_file = st.sidebar.file_uploader("Upload Flight Log PDF", type=["pdf"])
 
-def extract_text_from_pdf(file):
-    doc = fitz.open(stream=file.read(), filetype="pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
-
-def parse_flight_log(text):
-    pattern = re.compile(r"(\d{2}/\d{2}/\d{4})\s+(.*?)\s+(Non Revenue|Rental|Other)\s+\+(\d+\.\d+)\s+(\d+\.\d+)\s+\+(\d+\.\d+)\s+(\d+\.\d+)")
-    data = pattern.findall(text)
-    df = pd.DataFrame(data, columns=["Date", "Pilot", "Type", "Hobbs +", "Hobbs Total", "Tach +", "Tach Total"])
-    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
-    df[["Hobbs +", "Hobbs Total", "Tach +", "Tach Total"]] = df[["Hobbs +", "Hobbs Total", "Tach +", "Tach Total"]].astype(float)
-    return df.sort_values("Date")
+def extract_flight_data_from_text(text):
+    pattern = r"(\d{2}/\d{2}/\d{4})\s+([A-Za-z ]+)\s+(Non Revenue|Rental|Other)\s+\+(\d+\.\d+)\s+(\d+\.\d+)\s+\+(\d+\.\d+)\s+(\d+\.\d+)"
+    matches = re.findall(pattern, text)
+    if not matches:
+        return pd.DataFrame()
+    data = []
+    for m in matches:
+        data.append({
+            "Date": pd.to_datetime(m[0], format="%m/%d/%Y"),
+            "Pilot": m[1].strip(),
+            "Type": m[2],
+            "Hobbs +/-": float(m[3]),
+            "Hobbs Total": float(m[4]),
+            "Tach +/-": float(m[5]),
+            "Tach Total": float(m[6]),
+        })
+    return pd.DataFrame(data)
 
 if uploaded_file:
-    text = extract_text_from_pdf(uploaded_file)
-    df = parse_flight_log(text)
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+        text = ""
+        for page in doc:
+            text += page.get_text()
 
-    st.subheader("📋 Flight Log Table")
-    st.dataframe(df)
+    df = extract_flight_data_from_text(text)
 
-    st.subheader("📈 Total Hours Flown Per Month")
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    monthly_hours = df.groupby("Month")["Hobbs +"].sum()
-    st.line_chart(monthly_hours)
+    if not df.empty:
+        st.subheader("Flight Log Data")
+        st.dataframe(df)
 
-    st.subheader("📉 Weekly Hours Flown")
-    df["Week"] = df["Date"].dt.strftime('%Y-%U')
-    weekly_hours = df.groupby("Week")["Hobbs +"].sum()
-    st.bar_chart(weekly_hours)
+        st.subheader("Metrics Dashboard")
 
-    st.subheader("📍 Flight Logs by Pilot")
-    st.dataframe(df.groupby("Pilot")[["Hobbs +", "Tach +"]].sum().sort_values("Hobbs +", ascending=False))
+        df["Month"] = df["Date"].dt.to_period("M")
+        monthly_hours = df.groupby("Month")["Hobbs +/-"].sum()
+        weekly_hours = df.set_index("Date").resample("W")["Hobbs +/-"].sum()
 
-    st.subheader("🛩️ Aircraft Utilization Heatmap (Sample Placeholder)")
-    fig, ax = plt.subplots()
-    sns.heatmap(pd.crosstab(df["Date"].dt.day_name(), df["Date"].dt.hour).fillna(0), ax=ax, cmap="Blues")
-    st.pyplot(fig)
+        col1, col2 = st.columns(2)
+        col1.metric("Total Hours Flown (Monthly Avg)", f"{monthly_hours.mean():.2f}")
+        col2.metric("Total Hours Flown (Weekly Avg)", f"{weekly_hours.mean():.2f}")
+
+        st.subheader("📈 Hobbs Hour Trend")
+        fig, ax = plt.subplots()
+        df_sorted = df.sort_values("Date")
+        ax.plot(df_sorted["Date"], df_sorted["Hobbs Total"], marker="o")
+        ax.set_title("Hobbs Total Over Time")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Hobbs Total")
+        st.pyplot(fig)
+
+    else:
+        st.warning("No flight log data detected in the uploaded PDF.")
