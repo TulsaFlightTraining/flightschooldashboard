@@ -35,7 +35,7 @@ def parse_pdf_instructor(file):
             # Determine instructor from the file name; if "parker" is in the name, assume Parker Foreman.
             instructor = "Parker Foreman" if "parker" in file.name.lower() else "Unknown Instructor"
             rows.append({"Date": date_val, "Instructor": instructor, "Flight": flight, "Ground": ground})
-        # Ensure we return a DataFrame with the expected columns, even if rows is empty.
+        # Ensure we return a DataFrame with the expected columns.
         if not rows:
             return pd.DataFrame(columns=["Date", "Instructor", "Flight", "Ground"])
         return pd.DataFrame(rows)
@@ -75,7 +75,6 @@ def parse_pdf_aircraft_hours(file):
             except Exception:
                 continue
             rows.append({"Date": date_val, "HobbsDelta": hobbs_val})
-        # Ensure we return a DataFrame with the expected columns.
         if not rows:
             return pd.DataFrame(columns=["Date", "HobbsDelta"])
         return pd.DataFrame(rows)
@@ -105,6 +104,8 @@ instructor_file = st.file_uploader("Upload Instructor Report (PDF/RTF)", type=["
 
 if instructor_file is not None:
     df_instructors = parse_pdf_instructor(instructor_file)
+    # Debug: Show columns to help identify issues.
+    st.write("Parsed columns:", df_instructors.columns.tolist())
     if df_instructors.empty or "Date" not in df_instructors.columns:
         st.error("No valid instructor data was parsed from the file.")
     else:
@@ -122,13 +123,17 @@ if instructor_file is not None:
         current_date = datetime.now()
         start_date = current_date - timedelta(days=21)
         
-        # Filter data to only include the past 21 days.
-        df_filtered = df_instructors[(df_instructors['Date'] >= start_date) & (df_instructors['Date'] <= current_date)]
+        try:
+            df_filtered = df_instructors[(df_instructors['Date'] >= start_date) & (df_instructors['Date'] <= current_date)]
+        except Exception as e:
+            st.error(f"Error filtering instructor data by date: {e}")
+            df_filtered = pd.DataFrame()
         
         results = []
         for instructor in instructors_list:
             df_instr = df_filtered[df_filtered['Instructor'] == instructor].copy()
             if not df_instr.empty:
+                # Calculate combined hours (Flight + Ground) for each session.
                 df_instr['Total Hours'] = df_instr['Flight'] + df_instr['Ground']
             else:
                 df_instr['Total Hours'] = 0
@@ -152,6 +157,7 @@ aircraft_file = st.file_uploader("Upload Aircraft Hours Report (PDF/RTF)", type=
 
 if aircraft_file is not None:
     df_aircraft = parse_pdf_aircraft_hours(aircraft_file)
+    st.write("Parsed columns:", df_aircraft.columns.tolist())
     if df_aircraft.empty or "HobbsDelta" not in df_aircraft.columns:
         st.error("No valid aircraft hours data was parsed from the file.")
     else:
@@ -159,7 +165,9 @@ if aircraft_file is not None:
         st.dataframe(df_aircraft)
         
         # Sum up the total incremental hours from the HobbsDelta column only.
-        total_hobbs_hours = df_aircraft["HobbsDelta"].sum()
-        
-        st.write("### Aircraft Hours Summary")
-        st.write(f"Total Aircraft Hours (Hobbs +/-): {total_hobbs_hours:.2f}")
+        try:
+            total_hobbs_hours = df_aircraft["HobbsDelta"].sum()
+            st.write("### Aircraft Hours Summary")
+            st.write(f"Total Aircraft Hours (Hobbs +/-): {total_hobbs_hours:.2f}")
+        except Exception as e:
+            st.error(f"Error calculating aircraft hours: {e}")
