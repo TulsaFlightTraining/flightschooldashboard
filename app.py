@@ -3,63 +3,68 @@ import streamlit as st
 import pandas as pd
 import fitz  # PyMuPDF
 import re
-import io
-import matplotlib.pyplot as plt
+from io import BytesIO
 
-st.set_page_config(layout="wide", page_title="Flight School Dashboard")
+st.set_page_config(page_title="Flight School Dashboard", layout="wide")
 
-st.title("📊 Flight School Dashboard")
+st.title("✈️ Flight School Dashboard")
+st.write("Upload a flight log PDF to generate metrics and insights.")
 
-uploaded_file = st.sidebar.file_uploader("Upload Flight Log PDF", type=["pdf"])
+uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
-def extract_flight_data_from_text(text):
-    pattern = r"(\d{2}/\d{2}/\d{4})\s+([A-Za-z ]+)\s+(Non Revenue|Rental|Other)\s+\+(\d+\.\d+)\s+(\d+\.\d+)\s+\+(\d+\.\d+)\s+(\d+\.\d+)"
-    matches = re.findall(pattern, text)
-    if not matches:
-        return pd.DataFrame()
+def extract_text_from_pdf(file):
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
+
+def parse_flight_log(text):
+    pattern = re.compile(
+        r"(\d{2}/\d{2}/\d{4})\s+([\w\s]+)?\s*(Rental|Non Revenue|Other)?\s*\+([\d\.]+)?\s*(?!Hobbs Total)\d*\.?\d*\s*\+([\d\.]+)?\s*(\d*\.?\d*)"
+    )
+    matches = pattern.findall(text)
+
     data = []
-    for m in matches:
-        data.append({
-            "Date": pd.to_datetime(m[0], format="%m/%d/%Y"),
-            "Pilot": m[1].strip(),
-            "Type": m[2],
-            "Hobbs +/-": float(m[3]),
-            "Hobbs Total": float(m[4]),
-            "Tach +/-": float(m[5]),
-            "Tach Total": float(m[6]),
-        })
+    for match in matches:
+        date, pilot, ftype, hobbs, tach, tach_total = match
+        if hobbs:
+            data.append({
+                "Date": date,
+                "Pilot": pilot.strip() if pilot else "Unknown",
+                "Type": ftype.strip() if ftype else "Unknown",
+                "Hobbs Hours": float(hobbs) if hobbs else 0,
+                "Tach Hours": float(tach) if tach else 0,
+                "Tach Total": float(tach_total) if tach_total else 0,
+            })
     return pd.DataFrame(data)
 
 if uploaded_file:
-    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-        text = ""
-        for page in doc:
-            text += page.get_text()
+    text = extract_text_from_pdf(uploaded_file)
+    df = parse_flight_log(text)
 
-    df = extract_flight_data_from_text(text)
-
-    if not df.empty:
-        st.subheader("Flight Log Data")
+    if df.empty:
+        st.error("No flight log data found in the uploaded PDF.")
+    else:
+        st.success("Flight log data extracted successfully!")
         st.dataframe(df)
 
-        st.subheader("Metrics Dashboard")
+        df["Date"] = pd.to_datetime(df["Date"])
+        df.set_index("Date", inplace=True)
 
-        df["Month"] = df["Date"].dt.to_period("M")
-        monthly_hours = df.groupby("Month")["Hobbs +/-"].sum()
-        weekly_hours = df.set_index("Date").resample("W")["Hobbs +/-"].sum()
+        st.subheader("📊 Metrics Dashboard")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Hobbs Hours", round(df["Hobbs Hours"].sum(), 2))
+        col2.metric("Total Tach Hours", round(df["Tach Hours"].sum(), 2))
+        col3.metric("Total Flights", len(df))
 
-        col1, col2 = st.columns(2)
-        col1.metric("Total Hours Flown (Monthly Avg)", f"{monthly_hours.mean():.2f}")
-        col2.metric("Total Hours Flown (Weekly Avg)", f"{weekly_hours.mean():.2f}")
+        st.subheader("📈 Hobbs and Tach Trends")
+        st.line_chart(df[["Hobbs Hours", "Tach Hours"]].resample("W").sum())
 
-        st.subheader("📈 Hobbs Hour Trend")
-        fig, ax = plt.subplots()
-        df_sorted = df.sort_values("Date")
-        ax.plot(df_sorted["Date"], df_sorted["Hobbs Total"], marker="o")
-        ax.set_title("Hobbs Total Over Time")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Hobbs Total")
-        st.pyplot(fig)
+        st.subheader("🧑‍✈️ Flights by Pilot")
+        pilot_totals = df.groupby("Pilot")[["Hobbs Hours"]].sum()
+        st.bar_chart(pilot_totals)
 
-    else:
-        st.warning("No flight log data detected in the uploaded PDF.")
+        st.subheader("📅 Monthly Breakdown")
+        monthly = df.resample("M").sum()
+        st.dataframe(monthly)
