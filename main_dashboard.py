@@ -104,15 +104,19 @@ instructor_file = st.file_uploader("Upload Instructor Report (PDF/RTF)", type=["
 
 if instructor_file is not None:
     df_instructors = parse_pdf_instructor(instructor_file)
-    # Debug: Show columns to help identify issues.
     st.write("Parsed columns:", df_instructors.columns.tolist())
+    # If the 'Instructor' column is missing, add it based on the file name.
+    if "Instructor" not in df_instructors.columns:
+        default_inst = "Parker Foreman" if "parker" in instructor_file.name.lower() else "Unknown Instructor"
+        df_instructors["Instructor"] = default_inst
+
     if df_instructors.empty or "Date" not in df_instructors.columns:
         st.error("No valid instructor data was parsed from the file.")
     else:
         st.write("### Parsed Instructor Data")
         st.dataframe(df_instructors)
         
-        # List of all instructors in the system.
+        # List of all instructors in the system (for visualization purposes).
         instructors_list = [
             "Whitt Fletcher", "Abcde Bonifacio", "Parker Foreman",
             "Edgar Amezcua", "Bobby Emert", "Jordan Raley",
@@ -131,11 +135,13 @@ if instructor_file is not None:
         
         results = []
         for instructor in instructors_list:
+            # Filter for each instructor; note that only Parker will have data if using Parker's file.
             df_instr = df_filtered[df_filtered['Instructor'] == instructor].copy()
             if not df_instr.empty:
                 # Calculate combined hours (Flight + Ground) for each session.
                 df_instr['Total Hours'] = df_instr['Flight'] + df_instr['Ground']
             else:
+                # If no data, set total hours to 0.
                 df_instr['Total Hours'] = 0
             total_hours = df_instr['Total Hours'].sum()
             # Divide by 21 days to include days with no work.
