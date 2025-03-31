@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
 st.title("Flight Instruction Hours Tracker")
 
@@ -29,12 +30,19 @@ if uploaded_file:
     # Cumulative hours
     cumulative_hours = daily_hours.cumsum()
 
+    # Compute average for past 3 weeks
+    end_date = pd.Timestamp(datetime.today().date())
+    start_date = end_date - timedelta(weeks=3)
+    mask = (daily_hours.index >= start_date) & (daily_hours.index <= end_date)
+    three_week_avg = daily_hours.loc[mask, "Total"].mean()
+
     # Summary stats
     st.subheader("Summary Statistics")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Ground", f"{daily_hours['Ground'].sum():.2f} hrs")
     col2.metric("Total Flight", f"{daily_hours['Flight'].sum():.2f} hrs")
     col3.metric("Total Instruction", f"{daily_hours['Total'].sum():.2f} hrs")
+    col4.metric("3-Week Avg (Total)", f"{three_week_avg:.2f} hrs/day")
 
     # Display the raw table (optional)
     st.subheader("Summed Daily Hours")
