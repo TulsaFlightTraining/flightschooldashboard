@@ -16,23 +16,51 @@ if uploaded_file:
     df["Ground"] = pd.to_numeric(df["Ground"], errors="coerce")
     df["Flight"] = pd.to_numeric(df["Flight"], errors="coerce")
 
+    # Optional pilot filter
+    pilots = df["Pilots"].dropna().unique()
+    selected_pilot = st.selectbox("Filter by Pilot (optional):", options=["All"] + list(pilots))
+    if selected_pilot != "All":
+        df = df[df["Pilots"] == selected_pilot]
+
     # Group by date and sum hours
     daily_hours = df.groupby("Date")[["Ground", "Flight"]].sum().sort_index()
+    daily_hours["Total"] = daily_hours["Ground"] + daily_hours["Flight"]
+
+    # Cumulative hours
+    cumulative_hours = daily_hours.cumsum()
+
+    # Summary stats
+    st.subheader("Summary Statistics")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Ground", f"{daily_hours['Ground'].sum():.2f} hrs")
+    col2.metric("Total Flight", f"{daily_hours['Flight'].sum():.2f} hrs")
+    col3.metric("Total Instruction", f"{daily_hours['Total'].sum():.2f} hrs")
 
     # Display the raw table (optional)
     st.subheader("Summed Daily Hours")
     st.dataframe(daily_hours)
 
-    # Plot the line chart
+    # Line chart: Daily Hours
     st.subheader("Instruction Hours Over Time")
-    fig, ax = plt.subplots()
-    ax.plot(daily_hours.index, daily_hours["Ground"], label="Ground Hours", marker='o')
-    ax.plot(daily_hours.index, daily_hours["Flight"], label="Flight Hours", marker='o')
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Hours")
-    ax.set_title("Daily Flight and Ground Instruction Hours")
-    ax.legend()
-    ax.grid(True)
+    fig1, ax1 = plt.subplots()
+    ax1.plot(daily_hours.index, daily_hours["Ground"], label="Ground Hours", marker='o')
+    ax1.plot(daily_hours.index, daily_hours["Flight"], label="Flight Hours", marker='o')
+    ax1.set_xlabel("Date")
+    ax1.set_ylabel("Hours")
+    ax1.set_title("Daily Flight and Ground Instruction Hours")
+    ax1.legend()
+    ax1.grid(True)
+    st.pyplot(fig1)
 
-    st.pyplot(fig)
-
+    # Line chart: Cumulative Hours
+    st.subheader("Cumulative Instruction Hours")
+    fig2, ax2 = plt.subplots()
+    ax2.plot(cumulative_hours.index, cumulative_hours["Ground"], label="Cumulative Ground", linestyle='--')
+    ax2.plot(cumulative_hours.index, cumulative_hours["Flight"], label="Cumulative Flight", linestyle='--')
+    ax2.plot(cumulative_hours.index, cumulative_hours["Total"], label="Total Instruction", linewidth=2)
+    ax2.set_xlabel("Date")
+    ax2.set_ylabel("Cumulative Hours")
+    ax2.set_title("Running Total of Instruction Hours")
+    ax2.legend()
+    ax2.grid(True)
+    st.pyplot(fig2)
