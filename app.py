@@ -59,6 +59,7 @@ if uploaded_file:
     fig1, ax1 = plt.subplots()
     ax1.plot(daily_hours.index, daily_hours["Ground"], label="Ground Hours", marker='o')
     ax1.plot(daily_hours.index, daily_hours["Flight"], label="Flight Hours", marker='o')
+    ax1.axhline(y=three_week_avg, color='red', linestyle='--', label='3-Week Avg')
     ax1.set_xlabel("Date")
     ax1.set_ylabel("Hours")
     ax1.set_title("Daily Flight and Ground Instruction Hours")
